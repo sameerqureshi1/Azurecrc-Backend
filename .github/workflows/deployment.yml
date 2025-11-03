@@ -7,16 +7,19 @@ on:
 env:
   AZURE_LOCATION: "eastus"
   RESOURCE_GROUP: "crc-rg"
-  STORAGE_ACCOUNT: "crcstorage${{ github.run_id }}"  # will be unique per workflow run
-  FUNCTIONAPP_NAME: "crc-backend-func-${{ github.run_id }}" # unique per run: change if you want fixed name
+  COSMOS_ACCOUNT: "crccosmos${{ github.run_id }}"  # unique per workflow
+  COSMOS_DB_NAME: "crcdb"
   TABLE_NAME: "visitorcounter"
-  BLOB_CONTAINER: "visitor-blobs"
+  FUNCTIONAPP_NAME: "crc-backend-func-${{ github.run_id }}" # unique per run
+  RUNTIME: "python"
+  FUNCTIONS_VERSION: "4"
 
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -27,47 +30,51 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Azure login
+      - name: Azure Login
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Create Resource Group
         run: |
-          az group create -n ${{ env.RESOURCE_GROUP }} -l ${{ env.AZURE_LOCATION }}
+          az group create --name ${{ env.RESOURCE_GROUP }} --location ${{ env.AZURE_LOCATION }}
 
-      - name: Create Storage Account
+      - name: Create Cosmos DB Account
         run: |
-          # storage account names must be globally unique and lowercase 3-24 chars
-          az storage account create -n ${{ env.STORAGE_ACCOUNT }} -g ${{ env.RESOURCE_GROUP }} -l ${{ env.AZURE_LOCATION }} --sku Standard_LRS
-          # get connection string
-          echo "STORAGE_CONN_STR=$(az storage account show-connection-string -n ${{ env.STORAGE_ACCOUNT }} -g ${{ env.RESOURCE_GROUP }} -o tsv)" >> $GITHUB_ENV
+          az cosmosdb create \
+            --name ${{ env.COSMOS_ACCOUNT }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --kind Table \
+            --locations regionName=${{ env.AZURE_LOCATION }}
 
-      - name: Create Table and Blob container
+      - name: Create Cosmos Table
         run: |
-          # Authenticate for storage commands using login credentials and account name
-          az storage table create --name ${{ env.TABLE_NAME }} --account-name ${{ env.STORAGE_ACCOUNT }} --auth-mode login
-          az storage container create --name ${{ env.BLOB_CONTAINER }} --account-name ${{ env.STORAGE_ACCOUNT }} --auth-mode login
+          az cosmosdb table create \
+            --account-name ${{ env.COSMOS_ACCOUNT }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.TABLE_NAME }}
 
-      - name: Create Function App
+      - name: Create Function App (Linux)
         run: |
-          # Create a storage-backed Function App (consumption)
           az functionapp create \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --consumption-plan-location ${{ env.AZURE_LOCATION }} \
-            --runtime python \
-            --functions-version 4 \
+            --runtime ${{ env.RUNTIME }} \
+            --functions-version ${{ env.FUNCTIONS_VERSION }} \
             --name ${{ env.FUNCTIONAPP_NAME }} \
-            --storage-account ${{ env.STORAGE_ACCOUNT }}
+            --storage-account <YOUR_EXISTING_STORAGE_ACCOUNT_NAME> \
+            --os-type Linux
 
       - name: Configure Function App settings
         run: |
-          az functionapp config appsettings set -g ${{ env.RESOURCE_GROUP }} -n ${{ env.FUNCTIONAPP_NAME }} \
-            --settings COSMOS_TABLE_NAME=${{ env.TABLE_NAME }}
+          az functionapp config appsettings set \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.FUNCTIONAPP_NAME }} \
+            --settings COSMOS_ACCOUNT=${{ env.COSMOS_ACCOUNT }} COSMOS_TABLE_NAME=${{ env.TABLE_NAME }}
 
-      - name: Deploy function app
+      - name: Deploy to Azure Function
         uses: azure/functions-action@v1
         with:
           app-name: ${{ env.FUNCTIONAPP_NAME }}
