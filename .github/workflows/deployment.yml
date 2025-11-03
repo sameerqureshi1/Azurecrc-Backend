@@ -1,16 +1,15 @@
-name: Deploy CRC Backend
+name: Deploy CRC Backend (Cosmos DB for Table)
 
 on:
   push:
     branches: [ main ]
 
 env:
-  AZURE_LOCATION: "eastus"                     # existing resource group location
-  RESOURCE_GROUP: "crc-rg"                     # already created RG
+  AZURE_LOCATION: "eastus"                     # must match existing resource group region
+  RESOURCE_GROUP: "crc-rg"                     # already created
   FUNCTIONAPP_NAME: "crc-backend-func-${{ github.run_id }}"
   COSMOS_ACCOUNT: "crc-cosmos-${{ github.run_id }}"
   TABLE_NAME: "visitorcounter"
-  STORAGE_ACCOUNT: "sameercv"   # use your existing one
 
 jobs:
   build-deploy:
@@ -35,8 +34,8 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # ✅ Create Cosmos DB with Table API enabled
-      - name: Create Cosmos DB (Table API)
+      # ✅ Create Cosmos DB for Table API
+      - name: Create Cosmos DB for Table
         run: |
           az cosmosdb create \
             --name ${{ env.COSMOS_ACCOUNT }} \
@@ -53,7 +52,7 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.TABLE_NAME }}
 
-      # ✅ Create Function App (using existing storage account)
+      # ✅ Create Function App (use your existing storage account directly)
       - name: Create Function App
         run: |
           az functionapp create \
@@ -62,7 +61,7 @@ jobs:
             --runtime python \
             --functions-version 4 \
             --name ${{ env.FUNCTIONAPP_NAME }} \
-            --storage-account ${{ env.STORAGE_ACCOUNT }}
+            --storage-account yourExistingStorageAccountName
 
       # ✅ Configure Function App settings
       - name: Configure Function App settings
