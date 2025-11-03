@@ -5,22 +5,18 @@ on:
     branches: [ main ]
 
 env:
-  AZURE_LOCATION: "eastus"
+  AZURE_LOCATION: "canadacentral"
   RESOURCE_GROUP: "crc-rg"
-  COSMOS_ACCOUNT: "crccosmos${{ github.run_id }}"  # unique per run
-  COSMOS_DB_NAME: "crcdb"
+  FUNCTIONAPP_NAME: "crc-backend-func-${{ github.run_id }}" # unique name per run
+  COSMOS_ACCOUNT: "crc-cosmos-${{ github.run_id }}"
+  COSMOS_DB_NAME: "visitorDB"
   TABLE_NAME: "visitorcounter"
-  FUNCTIONAPP_NAME: "crc-backend-func-${{ github.run_id }}" # unique per run
-  RUNTIME: "python"
-  FUNCTIONS_VERSION: "4"
-  STORAGE_ACCOUNT: "sameercv" # replace with your actual one
 
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -31,52 +27,50 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install -r requirements.txt
 
-      - name: Azure Login
+      - name: Azure login
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Create Resource Group
         run: |
-          az group create --name ${{ env.RESOURCE_GROUP }} --location ${{ env.AZURE_LOCATION }}
+          az group create -n ${{ env.RESOURCE_GROUP }} -l ${{ env.AZURE_LOCATION }}
 
-      - name: Create Cosmos DB Account (Table API)
+      - name: Create Cosmos DB (Table API)
         run: |
           az cosmosdb create \
             --name ${{ env.COSMOS_ACCOUNT }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
-            --capabilities EnableTable \
-            --locations regionName=${{ env.AZURE_LOCATION }} \
-            --default-consistency-level Eventual
+            --locations regionName=${{ env.AZURE_LOCATION }} failoverPriority=0 \
+            --kind GlobalDocumentDB
 
-      - name: Create Cosmos Table
+      - name: Create Table inside Cosmos DB
         run: |
           az cosmosdb table create \
             --account-name ${{ env.COSMOS_ACCOUNT }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.TABLE_NAME }}
 
-      - name: Create Function App (Linux)
+      - name: Create Function App
         run: |
           az functionapp create \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --consumption-plan-location ${{ env.AZURE_LOCATION }} \
-            --runtime ${{ env.RUNTIME }} \
-            --functions-version ${{ env.FUNCTIONS_VERSION }} \
+            --runtime python \
+            --functions-version 4 \
             --name ${{ env.FUNCTIONAPP_NAME }} \
-            --storage-account ${{ env.STORAGE_ACCOUNT }} \
-            --os-type Linux
+            --storage-account <YOUR_EXISTING_STORAGE_ACCOUNT_NAME>
 
       - name: Configure Function App settings
         run: |
           az functionapp config appsettings set \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --name ${{ env.FUNCTIONAPP_NAME }} \
-            --settings COSMOS_ACCOUNT=${{ env.COSMOS_ACCOUNT }} COSMOS_TABLE_NAME=${{ env.TABLE_NAME }}
+            -g ${{ env.RESOURCE_GROUP }} \
+            -n ${{ env.FUNCTIONAPP_NAME }} \
+            --settings COSMOS_TABLE_NAME=${{ env.TABLE_NAME }}
 
-      - name: Deploy to Azure Function
+      - name: Deploy Function App code
         uses: azure/functions-action@v1
         with:
           app-name: ${{ env.FUNCTIONAPP_NAME }}
