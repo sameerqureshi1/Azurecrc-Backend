@@ -7,12 +7,13 @@ on:
 env:
   AZURE_LOCATION: "eastus"
   RESOURCE_GROUP: "crc-rg"
-  COSMOS_ACCOUNT: "crccosmos${{ github.run_id }}"  # unique per workflow
+  COSMOS_ACCOUNT: "crccosmos${{ github.run_id }}"  # unique per run
   COSMOS_DB_NAME: "crcdb"
   TABLE_NAME: "visitorcounter"
   FUNCTIONAPP_NAME: "crc-backend-func-${{ github.run_id }}" # unique per run
   RUNTIME: "python"
   FUNCTIONS_VERSION: "4"
+  STORAGE_ACCOUNT: "sameercv" # replace with your actual one
 
 jobs:
   build-deploy:
@@ -41,13 +42,14 @@ jobs:
         run: |
           az group create --name ${{ env.RESOURCE_GROUP }} --location ${{ env.AZURE_LOCATION }}
 
-      - name: Create Cosmos DB Account
+      - name: Create Cosmos DB Account (Table API)
         run: |
           az cosmosdb create \
             --name ${{ env.COSMOS_ACCOUNT }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
-            --kind Table \
-            --locations regionName=${{ env.AZURE_LOCATION }}
+            --capabilities EnableTable \
+            --locations regionName=${{ env.AZURE_LOCATION }} \
+            --default-consistency-level Eventual
 
       - name: Create Cosmos Table
         run: |
@@ -64,7 +66,7 @@ jobs:
             --runtime ${{ env.RUNTIME }} \
             --functions-version ${{ env.FUNCTIONS_VERSION }} \
             --name ${{ env.FUNCTIONAPP_NAME }} \
-            --storage-account <YOUR_EXISTING_STORAGE_ACCOUNT_NAME> \
+            --storage-account ${{ env.STORAGE_ACCOUNT }} \
             --os-type Linux
 
       - name: Configure Function App settings
