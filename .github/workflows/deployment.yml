@@ -5,16 +5,18 @@ on:
     branches: [ main ]
 
 env:
-  AZURE_LOCATION: "canadacentral"
-  RESOURCE_GROUP: "crc-rg"
-  FUNCTIONAPP_NAME: "crc-backend-func-${{ github.run_id }}" # unique name per run
+  AZURE_LOCATION: "eastus"                     # match existing resource group location
+  RESOURCE_GROUP: "crc-rg"                     # already exists
+  FUNCTIONAPP_NAME: "crc-backend-func-${{ github.run_id }}"
   COSMOS_ACCOUNT: "crc-cosmos-${{ github.run_id }}"
   COSMOS_DB_NAME: "visitorDB"
   TABLE_NAME: "visitorcounter"
+  STORAGE_ACCOUNT: "<YOUR_EXISTING_STORAGE_ACCOUNT_NAME>"   # replace this
 
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -34,11 +36,9 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Create Resource Group
-        run: |
-          az group create -n ${{ env.RESOURCE_GROUP }} -l ${{ env.AZURE_LOCATION }}
+      # ✅ Resource Group step removed — we’ll use the existing one
 
-      - name: Create Cosmos DB (Table API)
+      - name: Create Cosmos DB (SQL API)
         run: |
           az cosmosdb create \
             --name ${{ env.COSMOS_ACCOUNT }} \
@@ -61,7 +61,7 @@ jobs:
             --runtime python \
             --functions-version 4 \
             --name ${{ env.FUNCTIONAPP_NAME }} \
-            --storage-account <YOUR_EXISTING_STORAGE_ACCOUNT_NAME>
+            --storage-account ${{ env.STORAGE_ACCOUNT }}
 
       - name: Configure Function App settings
         run: |
