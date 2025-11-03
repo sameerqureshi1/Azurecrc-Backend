@@ -1,0 +1,74 @@
+name: Deploy CRC Backend
+
+on:
+  push:
+    branches: [ main ]
+
+env:
+  AZURE_LOCATION: "eastus"
+  RESOURCE_GROUP: "crc-rg"
+  STORAGE_ACCOUNT: "crcstorage${{ github.run_id }}"  # will be unique per workflow run
+  FUNCTIONAPP_NAME: "crc-backend-func-${{ github.run_id }}" # unique per run: change if you want fixed name
+  TABLE_NAME: "visitorcounter"
+  BLOB_CONTAINER: "visitor-blobs"
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Azure login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Create Resource Group
+        run: |
+          az group create -n ${{ env.RESOURCE_GROUP }} -l ${{ env.AZURE_LOCATION }}
+
+      - name: Create Storage Account
+        run: |
+          # storage account names must be globally unique and lowercase 3-24 chars
+          az storage account create -n ${{ env.STORAGE_ACCOUNT }} -g ${{ env.RESOURCE_GROUP }} -l ${{ env.AZURE_LOCATION }} --sku Standard_LRS
+          # get connection string
+          echo "STORAGE_CONN_STR=$(az storage account show-connection-string -n ${{ env.STORAGE_ACCOUNT }} -g ${{ env.RESOURCE_GROUP }} -o tsv)" >> $GITHUB_ENV
+
+      - name: Create Table and Blob container
+        run: |
+          # Authenticate for storage commands using login credentials and account name
+          az storage table create --name ${{ env.TABLE_NAME }} --account-name ${{ env.STORAGE_ACCOUNT }} --auth-mode login
+          az storage container create --name ${{ env.BLOB_CONTAINER }} --account-name ${{ env.STORAGE_ACCOUNT }} --auth-mode login
+
+      - name: Create Function App
+        run: |
+          # Create a storage-backed Function App (consumption)
+          az functionapp create \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --consumption-plan-location ${{ env.AZURE_LOCATION }} \
+            --runtime python \
+            --functions-version 4 \
+            --name ${{ env.FUNCTIONAPP_NAME }} \
+            --storage-account ${{ env.STORAGE_ACCOUNT }}
+
+      - name: Configure Function App settings
+        run: |
+          az functionapp config appsettings set -g ${{ env.RESOURCE_GROUP }} -n ${{ env.FUNCTIONAPP_NAME }} \
+            --settings COSMOS_TABLE_NAME=${{ env.TABLE_NAME }}
+
+      - name: Deploy function app
+        uses: azure/functions-action@v1
+        with:
+          app-name: ${{ env.FUNCTIONAPP_NAME }}
+          package: '.'
