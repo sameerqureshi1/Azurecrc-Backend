@@ -5,13 +5,12 @@ on:
     branches: [ main ]
 
 env:
-  AZURE_LOCATION: "eastus"                     # match existing resource group location
-  RESOURCE_GROUP: "crc-rg"                     # already exists
+  AZURE_LOCATION: "eastus"                     # existing resource group location
+  RESOURCE_GROUP: "crc-rg"                     # already created RG
   FUNCTIONAPP_NAME: "crc-backend-func-${{ github.run_id }}"
   COSMOS_ACCOUNT: "crc-cosmos-${{ github.run_id }}"
-  COSMOS_DB_NAME: "visitorDB"
   TABLE_NAME: "visitorcounter"
-  STORAGE_ACCOUNT: "<YOUR_EXISTING_STORAGE_ACCOUNT_NAME>"   # replace this
+  STORAGE_ACCOUNT: "sameercv"   # use your existing one
 
 jobs:
   build-deploy:
@@ -29,23 +28,24 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Azure login
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # ✅ Resource Group step removed — we’ll use the existing one
-
-      - name: Create Cosmos DB (SQL API)
+      # ✅ Create Cosmos DB with Table API enabled
+      - name: Create Cosmos DB (Table API)
         run: |
           az cosmosdb create \
             --name ${{ env.COSMOS_ACCOUNT }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --locations regionName=${{ env.AZURE_LOCATION }} failoverPriority=0 \
-            --kind GlobalDocumentDB
+            --kind GlobalDocumentDB \
+            --capabilities EnableTable
 
+      # ✅ Create Table inside Cosmos DB
       - name: Create Table inside Cosmos DB
         run: |
           az cosmosdb table create \
@@ -53,6 +53,7 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.TABLE_NAME }}
 
+      # ✅ Create Function App (using existing storage account)
       - name: Create Function App
         run: |
           az functionapp create \
@@ -63,6 +64,7 @@ jobs:
             --name ${{ env.FUNCTIONAPP_NAME }} \
             --storage-account ${{ env.STORAGE_ACCOUNT }}
 
+      # ✅ Configure Function App settings
       - name: Configure Function App settings
         run: |
           az functionapp config appsettings set \
@@ -70,6 +72,7 @@ jobs:
             -n ${{ env.FUNCTIONAPP_NAME }} \
             --settings COSMOS_TABLE_NAME=${{ env.TABLE_NAME }}
 
+      # ✅ Deploy Function App code
       - name: Deploy Function App code
         uses: azure/functions-action@v1
         with:
