@@ -5,8 +5,8 @@ on:
     branches: [ main ]
 
 env:
-  AZURE_LOCATION: "canadacentral"              # change region if needed
-  RESOURCE_GROUP: "crc-rg"                     # already created
+  AZURE_LOCATION: "canadacentral"              
+  RESOURCE_GROUP: "crc-rg"                     
   FUNCTIONAPP_NAME: "crc-backend-func-${{ github.run_id }}"
   COSMOS_ACCOUNT: "crc-cosmos-${{ github.run_id }}"
   TABLE_NAME: "visitorcounter"
@@ -52,9 +52,29 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.TABLE_NAME }}
 
-      # ✅ Create Function App (Linux plan for Python)
+      # ✅ Create Function App (Consumption Plan + Auto Storage)
       - name: Create Function App
         run: |
           az functionapp create \
             --resource-group ${{ env.RESOURCE_GROUP }} \
-            --consumption-plan-lo
+            --name ${{ env.FUNCTIONAPP_NAME }} \
+            --consumption-plan-location ${{ env.AZURE_LOCATION }} \
+            --runtime python \
+            --functions-version 4 \
+            --os-type Linux \
+            --assign-identity
+
+      # ✅ Configure Function App settings
+      - name: Configure Function App settings
+        run: |
+          az functionapp config appsettings set \
+            -g ${{ env.RESOURCE_GROUP }} \
+            -n ${{ env.FUNCTIONAPP_NAME }} \
+            --settings COSMOS_TABLE_NAME=${{ env.TABLE_NAME }}
+
+      # ✅ Deploy Function App code
+      - name: Deploy Function App code
+        uses: azure/functions-action@v1
+        with:
+          app-name: ${{ env.FUNCTIONAPP_NAME }}
+          package: '.'
