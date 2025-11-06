@@ -53,4 +53,39 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.TABLE_NAME }}
 
-      # ✅ Create Storage Account (required
+      # ✅ Create Storage Account (required by Function App)
+      - name: Create Storage Account
+        run: |
+          az storage account create \
+            --name ${{ env.STORAGE_ACCOUNT }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --location ${{ env.AZURE_LOCATION }} \
+            --sku Standard_LRS \
+            --kind StorageV2
+
+      # ✅ Create Function App (Linux Consumption Plan)
+      - name: Create Function App
+        run: |
+          az functionapp create \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --consumption-plan-location ${{ env.AZURE_LOCATION }} \
+            --runtime python \
+            --functions-version 4 \
+            --os-type Linux \
+            --name ${{ env.FUNCTIONAPP_NAME }} \
+            --storage-account ${{ env.STORAGE_ACCOUNT }}
+
+      # ✅ Configure Function App settings
+      - name: Configure Function App settings
+        run: |
+          az functionapp config appsettings set \
+            -g ${{ env.RESOURCE_GROUP }} \
+            -n ${{ env.FUNCTIONAPP_NAME }} \
+            --settings COSMOS_TABLE_NAME=${{ env.TABLE_NAME }}
+
+      # ✅ Deploy Function App code
+      - name: Deploy Function App code
+        uses: azure/functions-action@v1
+        with:
+          app-name: ${{ env.FUNCTIONAPP_NAME }}
+          package: '.'
