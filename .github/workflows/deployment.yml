@@ -17,25 +17,29 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Checkout repo
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Setup Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.9"
 
+      # Install dependencies
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
+      # Login to Azure
       - name: Azure login
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # ✅ Create Cosmos DB for Table API
+      # Create Cosmos DB Table API
       - name: Create Cosmos DB for Table
         run: |
           az cosmosdb create \
@@ -45,15 +49,12 @@ jobs:
             --capabilities EnableTable \
             --locations regionName=${{ env.AZURE_LOCATION }} failoverPriority=0
 
-      # ✅ Create Table inside Cosmos DB
-      - name: Create Table inside Cosmos DB
-        run: |
           az cosmosdb table create \
             --account-name ${{ env.COSMOS_ACCOUNT }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.TABLE_NAME }}
 
-      # ✅ Create Storage Account (required by Function App)
+      # Create Storage Account
       - name: Create Storage Account
         run: |
           az storage account create \
@@ -63,7 +64,7 @@ jobs:
             --sku Standard_LRS \
             --kind StorageV2
 
-      # ✅ Create Function App (Linux Consumption Plan)
+      # Create Function App
       - name: Create Function App
         run: |
           az functionapp create \
@@ -75,7 +76,7 @@ jobs:
             --name ${{ env.FUNCTIONAPP_NAME }} \
             --storage-account ${{ env.STORAGE_ACCOUNT }}
 
-      # ✅ Configure Function App settings
+      # Configure settings
       - name: Configure Function App settings
         run: |
           az functionapp config appsettings set \
@@ -83,18 +84,29 @@ jobs:
             -n ${{ env.FUNCTIONAPP_NAME }} \
             --settings COSMOS_TABLE_NAME=${{ env.TABLE_NAME }}
 
-      # ✅ Clean workspace to remove unnecessary folders
+      # ✅ Zip only function files
       - name: Prepare deployment package
         run: |
-          echo ".git/" >> .funcignore
-          echo ".github/" >> .funcignore
-          echo ".vscode/" >> .funcignore
-          echo "local.settings.json" >> .funcignore
-          echo "README.md" >> .funcignore
+          mkdir package
+          cp -r * package/
+          cd package
+          zip -r ../functionapp.zip .
+          cd ..
 
-      # ✅ Deploy Function App code (correct packaging path)
+      # ✅ Deploy using Azure CLI (more stable than actions)
       - name: Deploy Function App code
-        uses: azure/functions-action@v1
-        with:
-          app-name: ${{ env.FUNCTIONAPP_NAME }}
-          package: '.'
+        run: |
+          az functionapp deployment source config-zip \
+            -g ${{ env.RESOURCE_GROUP }} \
+            -n ${{ env.FUNCTIONAPP_NAME }} \
+            --src functionapp.zip
+
+      # ✅ Restart and sync triggers
+      - name: Restart Function App and Sync Triggers
+        run: |
+          az functionapp restart \
+            -g ${{ env.RESOURCE_GROUP }} \
+            -n ${{ env.FUNCTIONAPP_NAME }}
+          az functionapp sync-functions \
+            -g ${{ env.RESOURCE_GROUP }} \
+            -n ${{ env.FUNCTIONAPP_NAME }}
