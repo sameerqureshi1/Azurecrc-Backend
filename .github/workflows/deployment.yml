@@ -35,6 +35,7 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      # ✅ Create Cosmos DB for Table API
       - name: Create Cosmos DB for Table
         run: |
           az cosmosdb create \
@@ -49,6 +50,7 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.TABLE_NAME }}
 
+      # ✅ Create Storage Account
       - name: Create Storage Account
         run: |
           az storage account create \
@@ -58,6 +60,7 @@ jobs:
             --sku Standard_LRS \
             --kind StorageV2
 
+      # ✅ Create Function App
       - name: Create Function App
         run: |
           az functionapp create \
@@ -69,6 +72,7 @@ jobs:
             --name ${{ env.FUNCTIONAPP_NAME }} \
             --storage-account ${{ env.STORAGE_ACCOUNT }}
 
+      # ✅ Configure App Settings
       - name: Configure Function App settings
         run: |
           az functionapp config appsettings set \
@@ -76,12 +80,12 @@ jobs:
             -n ${{ env.FUNCTIONAPP_NAME }} \
             --settings COSMOS_TABLE_NAME=${{ env.TABLE_NAME }}
 
-      # ✅ Wait for Kudu (SCM) site to become available
+      # ✅ Wait for SCM site to be ready
       - name: Wait for SCM site to be ready
         run: |
           echo "Waiting for Kudu site to be ready..."
           sleep 60
-          echo "Checking site availability..."
+          echo "Checking Function App state..."
           az functionapp show -g ${{ env.RESOURCE_GROUP }} -n ${{ env.FUNCTIONAPP_NAME }} --query state
 
       # ✅ Prepare clean deployment package
@@ -94,7 +98,7 @@ jobs:
           zip -r ../functionapp.zip .
           cd ..
 
-      # ✅ Deploy with retry logic
+      # ✅ Deploy using Azure CLI (with retry)
       - name: Deploy Function App code
         run: |
           for i in {1..3}; do
@@ -105,11 +109,9 @@ jobs:
               --src functionapp.zip --build-remote true && break || sleep 30
           done
 
-      - name: Restart Function App and Sync Triggers
+      # ✅ Restart Function App (sync happens automatically)
+      - name: Restart Function App
         run: |
           az functionapp restart \
-            -g ${{ env.RESOURCE_GROUP }} \
-            -n ${{ env.FUNCTIONAPP_NAME }}
-          az functionapp sync-functions \
             -g ${{ env.RESOURCE_GROUP }} \
             -n ${{ env.FUNCTIONAPP_NAME }}
