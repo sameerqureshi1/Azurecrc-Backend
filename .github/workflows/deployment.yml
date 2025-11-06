@@ -5,7 +5,7 @@ on:
     branches: [ main ]
 
 env:
-  AZURE_LOCATION: "eastus2"                     # must match existing resource group region
+  AZURE_LOCATION: "westus2"                     # must match existing resource group region
   RESOURCE_GROUP: "crc-rg"                     # already created
   FUNCTIONAPP_NAME: "crc-backend-func-${{ github.run_id }}"
   COSMOS_ACCOUNT: "crc-cosmos-${{ github.run_id }}"
