@@ -5,7 +5,7 @@ on:
     branches: [ main ]
 
 env:
-  AZURE_LOCATION: "eastus"                     # must match existing resource group region
+  AZURE_LOCATION: "canadacentral"              # change region as needed
   RESOURCE_GROUP: "crc-rg"                     # already created
   FUNCTIONAPP_NAME: "crc-backend-func-${{ github.run_id }}"
   COSMOS_ACCOUNT: "crc-cosmos-${{ github.run_id }}"
@@ -52,7 +52,7 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.TABLE_NAME }}
 
-      # ✅ Create Function App (use your existing storage account directly)
+      # ✅ Create Function App (Linux plan for Python)
       - name: Create Function App
         run: |
           az functionapp create \
@@ -60,6 +60,7 @@ jobs:
             --consumption-plan-location ${{ env.AZURE_LOCATION }} \
             --runtime python \
             --functions-version 4 \
+            --os-type Linux \
             --name ${{ env.FUNCTIONAPP_NAME }} \
             --storage-account yourExistingStorageAccountName
 
