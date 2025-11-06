@@ -39,7 +39,7 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # Create Cosmos DB Table API
+      # Create Cosmos DB for Table API
       - name: Create Cosmos DB for Table
         run: |
           az cosmosdb create \
@@ -84,16 +84,17 @@ jobs:
             -n ${{ env.FUNCTIONAPP_NAME }} \
             --settings COSMOS_TABLE_NAME=${{ env.TABLE_NAME }}
 
-      # ✅ Zip only function files
+      # ✅ Prepare clean deployment package
       - name: Prepare deployment package
         run: |
           mkdir package
-          cp -r * package/
+          shopt -s extglob
+          cp -r !(package) package/
           cd package
           zip -r ../functionapp.zip .
           cd ..
 
-      # ✅ Deploy using Azure CLI (more stable than actions)
+      # ✅ Deploy using Azure CLI
       - name: Deploy Function App code
         run: |
           az functionapp deployment source config-zip \
