@@ -5,11 +5,12 @@ on:
     branches: [ main ]
 
 env:
-  AZURE_LOCATION: "canadacentral"              
-  RESOURCE_GROUP: "crc-rg"                     
+  AZURE_LOCATION: "West US 2"
+  RESOURCE_GROUP: "crc-rg"
   FUNCTIONAPP_NAME: "crc-backend-func-${{ github.run_id }}"
   COSMOS_ACCOUNT: "crc-cosmos-${{ github.run_id }}"
   TABLE_NAME: "visitorcounter"
+  STORAGE_ACCOUNT: "crcfunstorage${{ github.run_id }}"
 
 jobs:
   build-deploy:
@@ -52,17 +53,27 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.TABLE_NAME }}
 
-      # ✅ Create Function App (Consumption Plan + Auto Storage)
+      # ✅ Create Storage Account (required by Function App)
+      - name: Create Storage Account
+        run: |
+          az storage account create \
+            --name ${{ env.STORAGE_ACCOUNT }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --location ${{ env.AZURE_LOCATION }} \
+            --sku Standard_LRS \
+            --kind StorageV2
+
+      # ✅ Create Function App (Linux Consumption Plan)
       - name: Create Function App
         run: |
           az functionapp create \
             --resource-group ${{ env.RESOURCE_GROUP }} \
-            --name ${{ env.FUNCTIONAPP_NAME }} \
             --consumption-plan-location ${{ env.AZURE_LOCATION }} \
             --runtime python \
             --functions-version 4 \
             --os-type Linux \
-            --assign-identity
+            --name ${{ env.FUNCTIONAPP_NAME }} \
+            --storage-account ${{ env.STORAGE_ACCOUNT }}
 
       # ✅ Configure Function App settings
       - name: Configure Function App settings
