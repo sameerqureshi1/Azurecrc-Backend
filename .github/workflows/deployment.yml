@@ -11,13 +11,14 @@ env:
   COSMOS_ACCOUNT: "crc-cosmos-${{ github.run_id }}"
   TABLE_NAME: "visitorcounter"
   STORAGE_ACCOUNT: "crcfunstorage${{ github.run_id }}"
+  FUNCTION_DIR: "VisitorCounter"  # 👈 name of your function folder
 
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # ✅ Checkout the repository
+      # ✅ Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -33,14 +34,14 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      # ✅ Azure login using GitHub secret
+      # ✅ Azure login
       - name: Azure login
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # ✅ Create Cosmos DB for Table API
-      - name: Create Cosmos DB for Table
+      # ✅ Create Cosmos DB
+      - name: Create Cosmos DB for Table API
         run: |
           az cosmosdb create \
             --name ${{ env.COSMOS_ACCOUNT }} \
@@ -76,7 +77,7 @@ jobs:
             --name ${{ env.FUNCTIONAPP_NAME }} \
             --storage-account ${{ env.STORAGE_ACCOUNT }}
 
-      # ✅ Configure App Settings (Cosmos Table Name)
+      # ✅ Configure App Settings
       - name: Configure Function App settings
         run: |
           az functionapp config appsettings set \
@@ -84,7 +85,7 @@ jobs:
             -n ${{ env.FUNCTIONAPP_NAME }} \
             --settings COSMOS_TABLE_NAME=${{ env.TABLE_NAME }}
 
-      # ✅ Enable Run From Package for clean deployment
+      # ✅ Enable Run From Package
       - name: Enable Run From Package
         run: |
           az functionapp config appsettings set \
@@ -92,38 +93,35 @@ jobs:
             -n ${{ env.FUNCTIONAPP_NAME }} \
             --settings WEBSITE_RUN_FROM_PACKAGE=1
 
-      # ✅ Wait for Function App to initialize
+      # ✅ Wait for Function App
       - name: Wait for Function App initialization
         run: |
           echo "Waiting for Function App to be ready..."
           sleep 60
           az functionapp show -g ${{ env.RESOURCE_GROUP }} -n ${{ env.FUNCTIONAPP_NAME }} --query state
 
-      # ✅ Prepare clean deployment package (include only function files)
+      # ✅ Prepare deployment package (fixed paths)
       - name: Prepare deployment package
         run: |
           mkdir package
-          cp -r *.py host.json requirements.txt package/
-          cp -r VisitorCounter package/  # Replace with your actual function folder name
+          cp host.json requirements.txt package/
+          cp -r ${{ env.FUNCTION_DIR }} package/
           cd package
           zip -r ../functionapp.zip .
           cd ..
-          echo "Created functionapp.zip package successfully."
+          echo "✅ functionapp.zip package created successfully."
 
-      # ✅ Deploy Function App code via Zip
+      # ✅ Deploy Function App code
       - name: Deploy Function App code
         run: |
-          echo "Starting deployment..."
           az functionapp deployment source config-zip \
             -g ${{ env.RESOURCE_GROUP }} \
             -n ${{ env.FUNCTIONAPP_NAME }} \
             --src functionapp.zip
-          echo "Deployment complete."
 
       # ✅ Sync Function Triggers
       - name: Sync Function Triggers
         run: |
-          echo "Syncing function triggers..."
           az functionapp function sync \
             -g ${{ env.RESOURCE_GROUP }} \
             -n ${{ env.FUNCTIONAPP_NAME }}
@@ -132,12 +130,5 @@ jobs:
       - name: Restart Function App
         run: |
           az functionapp restart \
-            -g ${{ env.RESOURCE_GROUP }} \
-            -n ${{ env.FUNCTIONAPP_NAME }}
-
-      # ✅ Verify deployment logs (for debugging)
-      - name: Verify Deployment Logs
-        run: |
-          az functionapp log deployment show \
             -g ${{ env.RESOURCE_GROUP }} \
             -n ${{ env.FUNCTIONAPP_NAME }}
