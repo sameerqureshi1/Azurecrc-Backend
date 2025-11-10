@@ -11,36 +11,32 @@ env:
   COSMOS_ACCOUNT: "crc-cosmos-${{ github.run_id }}"
   TABLE_NAME: "visitorcounter"
   STORAGE_ACCOUNT: "crcfunstorage${{ github.run_id }}"
-  FUNCTION_DIR: "VisitorCounter"  # 👈 name of your function folder
+  FUNCTION_DIR: "VisitorCounter"  # your function folder name
 
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # ✅ Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ✅ Set up Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.9"
 
-      # ✅ Install dependencies
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      # ✅ Azure login
       - name: Azure login
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # ✅ Create Cosmos DB
+      # Create Cosmos DB
       - name: Create Cosmos DB for Table API
         run: |
           az cosmosdb create \
@@ -55,7 +51,7 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.TABLE_NAME }}
 
-      # ✅ Create Storage Account
+      # Create Storage Account
       - name: Create Storage Account
         run: |
           az storage account create \
@@ -65,7 +61,7 @@ jobs:
             --sku Standard_LRS \
             --kind StorageV2
 
-      # ✅ Create Function App
+      # Create Function App
       - name: Create Function App
         run: |
           az functionapp create \
@@ -77,30 +73,22 @@ jobs:
             --name ${{ env.FUNCTIONAPP_NAME }} \
             --storage-account ${{ env.STORAGE_ACCOUNT }}
 
-      # ✅ Configure App Settings
+      # Configure settings
       - name: Configure Function App settings
         run: |
           az functionapp config appsettings set \
             -g ${{ env.RESOURCE_GROUP }} \
             -n ${{ env.FUNCTIONAPP_NAME }} \
-            --settings COSMOS_TABLE_NAME=${{ env.TABLE_NAME }}
+            --settings COSMOS_TABLE_NAME=${{ env.TABLE_NAME }} WEBSITE_RUN_FROM_PACKAGE=1
 
-      # ✅ Enable Run From Package
-      - name: Enable Run From Package
-        run: |
-          az functionapp config appsettings set \
-            -g ${{ env.RESOURCE_GROUP }} \
-            -n ${{ env.FUNCTIONAPP_NAME }} \
-            --settings WEBSITE_RUN_FROM_PACKAGE=1
-
-      # ✅ Wait for Function App
+      # Wait for Function App to initialize
       - name: Wait for Function App initialization
         run: |
-          echo "Waiting for Function App to be ready..."
-          sleep 60
+          echo "Waiting 90 seconds for Function App to be ready..."
+          sleep 90
           az functionapp show -g ${{ env.RESOURCE_GROUP }} -n ${{ env.FUNCTIONAPP_NAME }} --query state
 
-      # ✅ Prepare deployment package (fixed paths)
+      # ✅ Prepare deployment package
       - name: Prepare deployment package
         run: |
           mkdir package
@@ -109,26 +97,21 @@ jobs:
           cd package
           zip -r ../functionapp.zip .
           cd ..
-          echo "✅ functionapp.zip package created successfully."
+          echo "✅ Created functionapp.zip successfully."
+          unzip -l functionapp.zip | head -n 20
 
-      # ✅ Deploy Function App code
-      - name: Deploy Function App code
+      # ✅ Deploy using remote build
+      - name: Deploy Function App code (Remote Build)
         run: |
+          echo "Deploying Function App with remote build..."
           az functionapp deployment source config-zip \
             -g ${{ env.RESOURCE_GROUP }} \
             -n ${{ env.FUNCTIONAPP_NAME }} \
-            --src functionapp.zip
+            --src functionapp.zip \
+            --build-remote true
 
-      # ✅ Sync Function Triggers
-      - name: Sync Function Triggers
+      # ✅ Sync and restart
+      - name: Sync and restart Function App
         run: |
-          az functionapp function sync \
-            -g ${{ env.RESOURCE_GROUP }} \
-            -n ${{ env.FUNCTIONAPP_NAME }}
-
-      # ✅ Restart Function App
-      - name: Restart Function App
-        run: |
-          az functionapp restart \
-            -g ${{ env.RESOURCE_GROUP }} \
-            -n ${{ env.FUNCTIONAPP_NAME }}
+          az functionapp function sync -g ${{ env.RESOURCE_GROUP }} -n ${{ env.FUNCTIONAPP_NAME }}
+          az functionapp restart -g ${{ env.RESOURCE_GROUP }} -n ${{ env.FUNCTIONAPP_NAME }}
